@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Emergency Service Finder (India)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root {--bg:#fff;--fg:#111;--accent:#1976d2}
+body {margin:0;font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--fg);}
+header {
+  background:var(--accent);
+  color:#fff;
+  padding:1rem;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  flex-wrap:wrap;
+}
+header h1 {margin:0;font-size:1.6rem;font-weight:700;text-shadow:2px 2px 4px rgba(0,0,0,0.3);}
+.controls button, .controls select {margin-left:.5rem;padding:.4rem .8rem;border:none;border-radius:4px;cursor:pointer;font-size:1rem;}
+#map {height:65vh;width:100%;z-index:0;}
+.container {max-width:850px;margin:1rem auto;padding:1rem;background:#fff;border-radius:8px;box-shadow:0 3px 12px #0002;}
+.service-block {background:#f8fafc;border:1px solid #e0e0e0;border-radius:8px;box-shadow:0 1px 5px #0001;padding:1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;}
+.service-icon {width:56px;height:56px;margin-right:12px;border-radius:8px;}
+.service-title {font-size:1.1em;color:var(--accent);font-weight:bold}
+.service-desc {font-size:.95em;color:#333;margin:.3em 0}
+.service-number {font-weight:bold;color:#222}
+.btn {background:var(--accent);color:#fff;padding:.4rem 1rem;border:none;border-radius:5px;text-decoration:none;cursor:pointer;}
+.btn:hover {background:#145a99}
+footer {padding:1rem;text-align:center;color:#666}
+.hidden {display:none}
+.facility {display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid #eee}
+#contacts-panel {position:fixed;right:1rem;top:4.5rem;width:340px;max-height:70vh;overflow:auto;background:#fff;border-radius:8px;padding:1rem;box-shadow:0 8px 30px rgba(0,0,0,0.18);z-index:1000;}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Emergency Service Finder</h1>
+  <div class="controls">
+    <select id="lang-select">
+      <option value="en">English</option>
+      <option value="hi">हिंदी</option>
+      <option value="ta">தமிழ்</option>
+      <option value="te">తెలుగు</option>
+      <option value="mr">मराठी</option>
+    </select>
+    <button id="contacts-btn" class="btn" style="background:#ffc107;color:#000;">Emergency Contacts</button>
+    <button id="loc-btn" class="btn">📍 Enable Location</button>
+  </div>
+</header>
+
+<div id="map"></div>
+
+<div class="container">
+  <h2 id="helpline-title">Emergency Helplines</h2>
+  <div id="service-list"></div>
+
+  <div id="contacts-panel" class="hidden">
+    <h3 id="saved-contacts">Saved Emergency Contacts</h3>
+    <div id="contacts-list"></div>
+    <input id="contact-name" placeholder="Name">
+    <input id="contact-phone" placeholder="Phone">
+    <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+      <button id="add-contact" class="btn">Add</button>
+      <button id="close-contacts" class="btn" style="background:#999;">Close</button>
+    </div>
+  </div>
+
+  <div style="margin-top:1rem;">
+    <button id="sos-btn" class="btn" style="background:#b71c1c;">🚨 SOS Panic</button>
+  </div>
+</div>
+
+<footer>© Emergency Finder • Stay safe, stay alert</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+const SERVICES = [
+  {name:"Police Station",number:"112",desc:"Police emergency or women's safety assistance.",icon:"https://img.icons8.com/color/64/000000/police-badge.png"},
+  {name:"Ambulance",number:"108",desc:"Medical emergency or ambulance service.",icon:"https://img.icons8.com/color/64/000000/ambulance.png"},
+  {name:"Fire Brigade",number:"101",desc:"Fire or rescue emergency.",icon:"https://img.icons8.com/color/64/000000/fire-station.png"},
+  {name:"Disaster Management",number:"108",desc:"Flood, earthquake or disaster relief.",icon:"https://img.icons8.com/color/64/000000/earthquake.png"},
+  {name:"Road Accident",number:"1073",desc:"Report road accidents or highway emergencies.",icon:"https://img.icons8.com/color/64/000000/car-accident.png"},
+  {name:"Railway Helpline",number:"139",desc:"Railway emergency or passenger help.",icon:"https://img.icons8.com/color/64/000000/train.png"},
+  {name:"Gas Leak",number:"1906",desc:"Report gas leak emergency.",icon:"https://img.icons8.com/color/64/000000/gas.png"},
+  {name:"Cyber Crime",number:"1930",desc:"Report online fraud or cyber crime.",icon:"https://img.icons8.com/color/64/000000/computer.png"},
+  {name:"Women's Helpline",number:"181",desc:"Women's safety and support helpline.",icon:"https://img.icons8.com/color/64/000000/women.png"},
+  {name:"Demo Emergency",number: "8983101210",desc:"For testing purposes only.",icon:"https://img.icons8.com/color/64/000000/alarm.png"}
+];
+
+
+const LANG = {
+  en: { title:"Emergency Service Finder", helplines:"Emergency Helplines", saved:"Saved Emergency Contacts", add:"Add", close:"Close", enableLoc:"📍 Enable Location", contacts:"Emergency Contacts", sos:"🚨 SOS Panic", callBtn:"Call", dirBtn:"Directions" },
+  hi: { title:"आपातकालीन सेवा खोजक", helplines:"आपातकालीन हेल्पलाइन", saved:"सहेजे गए आपातकालीन संपर्क", add:"जोड़ें", close:"बंद करें", enableLoc:"📍 स्थान सक्षम करें", contacts:"आपातकालीन संपर्क", sos:"🚨 एसओएस मदद", callBtn:"कॉल", dirBtn:"दिशाएँ" },
+  ta: { title:"அவசர சேவை கண்டுபிடிப்பான்", helplines:"அவசர உதவி எண்கள்", saved:"சேமிக்கப்பட்ட அவசர தொடர்புகள்", add:"சேர்", close:"மூடு", enableLoc:"📍 இடத்தை இயக்கு", contacts:"அவசர தொடர்புகள்", sos:"🚨 அவசர அழைப்பு", callBtn:"கால்", dirBtn:"வழிகாட்டி" },
+  te: { title:"అత్యవసర సేవల కనుగొనివాడు", helplines:"అత్యవసర హెల్ప్‌లైన్‌లు", saved:"సేవ్ చేసిన అత్యవసర కాంటాక్టులు", add:"జోడించు", close:"మూసివేయి", enableLoc:"📍 స్థానం ప్రారంభించండి", contacts:"అత్యవసర కాంటాక్టులు", sos:"🚨 ఎస్ఓఎస్ కాల్", callBtn:"కాల్", dirBtn:"దిక్సూచన" },
+  mr: { title:"आपत्कालीन सेवा शोधक", helplines:"आपत्कालीन हेल्प लाईन", saved:"जतन केलेले आपत्कालीन संपर्क", add:"जोडा", close:"बंद करा", enableLoc:"📍 स्थान सक्षम करा", contacts:"आपत्कालीन संपर्क", sos:"🚨 एसओएस कॉल", callBtn:"कॉल", dirBtn:"दिशा" }
+};
+
+function setLanguage(lang){
+  const t=LANG[lang]||LANG.en;
+  document.getElementById('title').innerText=t.title;
+  document.getElementById('helpline-title').innerText=t.helplines;
+  document.getElementById('saved-contacts').innerText=t.saved;
+  document.getElementById('add-contact').innerText=t.add;
+  document.getElementById('close-contacts').innerText=t.close;
+  document.getElementById('loc-btn').innerText=t.enableLoc;
+  document.getElementById('contacts-btn').innerText=t.contacts;
+  document.getElementById('sos-btn').innerText=t.sos;
+
+  renderServices();
+}
+document.getElementById('lang-select').onchange = e => setLanguage(e.target.value);
+setLanguage('en');
+
+
+const map = L.map('map').setView([20.5937,78.9629],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+
+let userMarker=null, userLat=null, userLon=null;
+
+
+function getCurrentPositionPromise(timeout=8000){
+  return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation) return reject(new Error('geolocation unsupported'));
+    navigator.geolocation.getCurrentPosition(pos=>resolve(pos), err=>reject(err), {enableHighAccuracy:true, timeout});
+  });
+}
+
+function enableLocation(){
+  getCurrentPositionPromise().then(p=>{
+    userLat = p.coords.latitude; userLon = p.coords.longitude;
+    if(userMarker) map.removeLayer(userMarker);
+    userMarker = L.marker([userLat, userLon]).addTo(map).bindPopup("You are here").openPopup();
+    map.setView([userLat, userLon],14);
+  }).catch(()=> alert("Unable to get your location. Please enable GPS and allow location access."));
+}
+document.getElementById('loc-btn').onclick = enableLocation;
+
+
+function openGoogleMaps(destLat, destLon){
+  if (userLat !== null && userLon !== null) {
+  
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLon}&destination=${destLat},${destLon}`;
+    window.open(url, '_blank');
+  } else {
+    
+    const url = `https://www.google.com/maps/search/?api=1&query=${destLat},${destLon}`;
+    window.open(url, '_blank');
+  }
+}
+
+
+function callWithLocation(rawNumber){
+  
+  const m = String(rawNumber).match(/\d+/);
+  const number = m ? m[0] : rawNumber;
+
+  
+  getCurrentPositionPromise(7000).then(pos=>{
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    
+    const mapsLink = `https://www.google.com/maps?q=${lat},${lon}`;
+    const smsBody = `🚨 Emergency! My location: ${mapsLink}`;
+    
+
+    window.location.href = `sms:${number}?body=${encodeURIComponent(smsBody)}`;
+    
+    try{ window.open(mapsLink, '_blank'); }catch(e){}
+    
+    setTimeout(()=>{ window.location.href = `tel:${number}`; }, 2500);
+  }).catch(()=> {
+    
+    alert("Couldn't get live GPS. The call will be placed without a location link. Try enabling location and try again.");
+    window.location.href = `tel:${number}`;
+  });
+}
+
+
+function renderServices(){
+  const t = LANG[document.getElementById('lang-select').value] || LANG.en;
+  const list = document.getElementById('service-list');
+  list.innerHTML = SERVICES.map(s=>`
+    <div class="service-block">
+      <div style="display:flex;align-items:center;">
+        <img src="${s.icon}" class="service-icon" alt="${s.name}">
+        <div>
+          <div class="service-title">${s.name}</div>
+          <div class="service-desc">${s.desc}</div>
+          <div class="service-number">Helpline: <b>${s.number}</b></div>
+        </div>
+      </div>
+      <div style="margin-top:.5rem;">
+        <button class="btn" onclick="callWithLocation('${s.number}')">${t.callBtn}</button>
+        <button class="btn" onclick="searchEmergency('${s.name}')">${t.dirBtn}</button>
+      </div>
+    </div>`).join('');
+}
+renderServices();
+
+
+async function searchEmergency(name){
+  if(!userLat){
+    
+    try {
+      const p = await getCurrentPositionPromise(7000);
+      userLat = p.coords.latitude; userLon = p.coords.longitude;
+      if(userMarker) map.removeLayer(userMarker);
+      userMarker = L.marker([userLat, userLon]).addTo(map).bindPopup("You are here").openPopup();
+      map.setView([userLat, userLon],14);
+    } catch(e){
+      alert("Getting location failed — map directions will open without your origin.");
+    }
+  }
+
+  let type = "hospital";
+  const kw = name.toLowerCase();
+  if(kw.includes("police")) type = "police";
+  if(kw.includes("fire")) type = "fire_station";
+  if(kw.includes("rail")) type = "train_station";
+  if(kw.includes("pharmacy")) type = "pharmacy";
+
+  const query = `[out:json];node["amenity"="${type}"](around:4000,${userLat||20.5937},${userLon||78.9629});out;`;
+  const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+    if(!data.elements || data.elements.length===0){ alert("No nearby " + name + " found."); return; }
+    const loc = data.elements[0];
+    L.marker([loc.lat, loc.lon]).addTo(map)
+      .bindPopup(`${loc.tags && loc.tags.name ? loc.tags.name : name }<br><button class='btn' onclick='openGoogleMaps(${loc.lat},${loc.lon})'>Open in Google Maps</button>`)
+      .openPopup();
+    map.setView([loc.lat, loc.lon],13);
+  }catch(e){
+    alert("Error fetching nearby location.");
+  }
+}
+
+
+document.getElementById('sos-btn').onclick = async ()=>{
+  try{
+    const p = await getCurrentPositionPromise(7000);
+    const lat = p.coords.latitude, lon = p.coords.longitude;
+    const mapsLink = `https://www.google.com/maps?q=${lat},${lon}`;
+    
+    try{ window.open(mapsLink,'_blank'); }catch(e){}
+    
+    const sms = `🚨 SOS! I need help. My location: ${mapsLink}`;
+    window.location.href = `sms:112?body=${encodeURIComponent(sms)}`;
+  }catch(e){
+    alert("Couldn't fetch live location. Sending SOS without location.");
+    window.location.href = `sms:112?body=${encodeURIComponent("🚨 SOS! I need help.")}`;
+  }
+};
+
+
+const contactsPanel=document.getElementById('contacts-panel');
+const contactsBtn=document.getElementById('contacts-btn');
+const closeContacts=document.getElementById('close-contacts');
+const contactsList=document.getElementById('contacts-list');
+const addContact=document.getElementById('add-contact');
+
+function renderContacts(){
+  const cs=JSON.parse(localStorage.getItem('eh_contacts')||'[]');
+  contactsList.innerHTML = (cs.length?cs:[]).map(c=>`
+    <div class="facility">
+      <div><b>${c.name}</b><br><span style="color:#555">${c.phone}</span></div>
+      <button class="btn" onclick="callWithLocation('${c.phone}')">📞</button>
+    </div>`).join('');
+}
+contactsBtn.onclick=()=>{ renderContacts(); contactsPanel.classList.toggle('hidden'); };
+if (closeContacts) closeContacts.onclick=()=>contactsPanel.classList.add('hidden');
+
+if (addContact) addContact.onclick=()=>{
+  const name=document.getElementById('contact-name').value.trim();
+  const phone=document.getElementById('contact-phone').value.trim();
+  if(name && phone){
+    const cs=JSON.parse(localStorage.getItem('eh_contacts')||'[]');
+    cs.push({name,phone});
+    localStorage.setItem('eh_contacts',JSON.stringify(cs));
+    renderContacts();
+    document.getElementById('contact-name').value='';
+    document.getElementById('contact-phone').value='';
+  }
+};
+
+
+if(!localStorage.getItem('eh_contacts')){
+  localStorage.setItem('eh_contacts', JSON.stringify([
+    {name:"Police Helpline",phone:"100"},
+    {name:"Ambulance Helpline",phone:"102"},
+    {name:"Fire Station",phone:"101"},
+    {name:"Demo Emergency",phone:"8411017905"}
+  ]));
+}
+</script>
+</body>
+</html>
